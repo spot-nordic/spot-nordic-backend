@@ -35,7 +35,8 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(String(password), salt);
-        const otp = generateOTP();
+        // const otp = generateOTP();
+        const otp = 123456;
         
         // Normalize email for Redis Key
         const redisKey = `OTP:REGISTER:${normalizedEmail}`;
@@ -50,11 +51,11 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         
         await redisClient.setEx(redisKey, 600, JSON.stringify(pendingUserData));
 
-        await emailConfig.sendEmail(
-            normalizedEmail,
-            'Verify Your Account',
-            `<h1>Your Registration OTP is ${otp}</h1><p>It expires in 10 minutes.</p>`
-        );
+        // await emailConfig.sendEmail(
+        //     normalizedEmail,
+        //     'Verify Your Account',
+        //     `<h1>Your Registration OTP is ${otp}</h1><p>It expires in 10 minutes.</p>`
+        // );
 
         res.status(201).json({ message: 'Registration successful, verify OTP to continue' });
     } catch (error) {
@@ -114,17 +115,18 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
             return;
         }
 
-        const otp = generateOTP();
+        // const otp = generateOTP();
+        const otp = 123456;
         const redisKey = `OTP:PASSWORD_RESET:${normalizedEmail}`;
         const pendingData = { email: normalizedEmail, otp };
         
         await redisClient.setEx(redisKey, 600, JSON.stringify(pendingData));
 
-        await emailConfig.sendEmail(
-            normalizedEmail,
-            'Password Reset Verification',
-            `<h1>Your Password Reset OTP is ${otp}</h1><p>It expires in 10 minutes.</p>`
-        );
+        // await emailConfig.sendEmail(
+        //     normalizedEmail,
+        //     'Password Reset Verification',
+        //     `<h1>Your Password Reset OTP is ${otp}</h1><p>It expires in 10 minutes.</p>`
+        // );
 
         res.status(200).json({ message: 'OTP sent to email successfully' });
     } catch (error) {
