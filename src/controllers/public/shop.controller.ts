@@ -29,13 +29,15 @@ export const browseProducts = async (req: Request, res: Response): Promise<void>
         const offset: number = (page - 1) * limit;
 
         const search: string = req.query.search as string;
-        const categoryId: string = req.query.categoryId as string;
+        const categorySlug: string = req.query.categorySlug as string;
         const minPrice: number = parseFloat(req.query.minPrice as string);
         const maxPrice: number = parseFloat(req.query.maxPrice as string);
 
         const conditions = [eq(products.status, 'ACTIVE')];
 
-        if (categoryId) conditions.push(eq(products.categoryId, String(categoryId)));
+        if (categorySlug) {
+            conditions.push(eq(productCategories.slug, String(categorySlug)));
+        }
         
         if (!isNaN(minPrice)) {
             conditions.push(gte(sql`${products.basePrice} * (1 - ${products.discountPercentage} / 100)`, minPrice));
@@ -51,7 +53,7 @@ export const browseProducts = async (req: Request, res: Response): Promise<void>
                     ilike(products.sku, `%${search}%`),
                     ilike(products.description, `%${search}%`),
                     ilike(productCategories.name, `%${search}%`)
-                ) as any
+                ) as ReturnType<typeof or>
             );
         }
 
@@ -96,7 +98,7 @@ export const browseProducts = async (req: Request, res: Response): Promise<void>
 
 export const getProductDetails = async (req: Request, res: Response): Promise<void> => {
     try {
-        const id: string = String(req.params.id);
+        const sku: string = String(req.params.sku);
 
         const product = await db.select({
             id: products.id,
@@ -114,7 +116,7 @@ export const getProductDetails = async (req: Request, res: Response): Promise<vo
         })
         .from(products)
         .innerJoin(productCategories, eq(products.categoryId, productCategories.id))
-        .where(and(eq(products.id, id), eq(products.status, 'ACTIVE')));
+        .where(and(eq(products.sku, sku), eq(products.status, 'ACTIVE')));
         
         if (product.length === 0) {
             res.status(404).json({ message: 'Product not found' });
@@ -129,10 +131,12 @@ export const getProductDetails = async (req: Request, res: Response): Promise<vo
 
 export const getSuggestedProducts = async (req: Request, res: Response): Promise<void> => {
     try {
-        const id: string = String(req.params.id);
+        const sku: string = String(req.params.sku);
         const limit: number = parseInt(req.query.limit as string) || 4;
 
-        const targetProduct = await db.select({ categoryId: products.categoryId }).from(products).where(eq(products.id, id));
+        const targetProduct = await db.select({ id: products.id, categoryId: products.categoryId })
+            .from(products)
+            .where(eq(products.sku, sku));
 
         if (targetProduct.length === 0) {
             res.status(404).json({ message: 'Product not found' });
@@ -154,7 +158,7 @@ export const getSuggestedProducts = async (req: Request, res: Response): Promise
         .where(and(
             eq(products.categoryId, targetProduct[0].categoryId),
             eq(products.status, 'ACTIVE'),
-            sql`${products.id} != ${id}`
+            sql`${products.id} != ${targetProduct[0].id}`
         ))
         .limit(limit)
         .orderBy(desc(products.averageRating), desc(products.createdAt));
@@ -167,8 +171,17 @@ export const getSuggestedProducts = async (req: Request, res: Response): Promise
 
 export const getProductReviews = async (req: Request, res: Response): Promise<void> => {
     try {
-        const id: string = req.params.id as string;
+        const sku: string = req.params.sku as string;
         
+        const targetProduct = await db.select({ id: products.id }).from(products).where(eq(products.sku, sku));
+
+        if (targetProduct.length === 0) {
+            res.status(404).json({ message: 'Product not found' });
+            return;
+        }
+
+        const productId: string = targetProduct[0].id;
+
         const reviews = await db.select({
             id: productReviews.id,
             rating: productReviews.rating,
@@ -178,7 +191,7 @@ export const getProductReviews = async (req: Request, res: Response): Promise<vo
         })
         .from(productReviews)
         .leftJoin(users, eq(productReviews.userId, users.id))
-        .where(and(eq(productReviews.productId, id), eq(productReviews.isVisible, true)))
+        .where(and(eq(productReviews.productId, productId), eq(productReviews.isVisible, true)))
         .orderBy(desc(productReviews.createdAt));
 
         res.status(200).json(reviews);
@@ -189,7 +202,7 @@ export const getProductReviews = async (req: Request, res: Response): Promise<vo
 
 export const addProductReview = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const productId: string = req.params.id as string;
+        const sku: string = req.params.sku as string;
         const userId: string = req.user!.id;
         const { rating, comment } = req.body;
 
@@ -199,11 +212,13 @@ export const addProductReview = async (req: AuthRequest, res: Response): Promise
             return;
         }
 
-        const targetProduct = await db.select().from(products).where(eq(products.id, productId));
+        const targetProduct = await db.select().from(products).where(eq(products.sku, sku));
         if (targetProduct.length === 0) {
             res.status(404).json({ message: 'Product not found' });
             return;
         }
+
+        const productId: string = targetProduct[0].id;
 
         const newReview = await db.insert(productReviews).values({
             productId,

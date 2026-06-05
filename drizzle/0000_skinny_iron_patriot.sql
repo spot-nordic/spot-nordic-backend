@@ -7,6 +7,7 @@ CREATE TYPE "public"."role" AS ENUM('ADMIN', 'USER');--> statement-breakpoint
 CREATE TYPE "public"."ticket_status" AS ENUM('OPEN', 'IN_PROGRESS', 'RESOLVED', 'CLOSED');--> statement-breakpoint
 CREATE TYPE "public"."token_type" AS ENUM('EMAIL_VERIFICATION', 'PASSWORD_RESET');--> statement-breakpoint
 CREATE TYPE "public"."user_status" AS ENUM('ACTIVE', 'BLOCKED');--> statement-breakpoint
+CREATE TYPE "public"."interaction_type" AS ENUM('LIKE', 'DISLIKE');--> statement-breakpoint
 CREATE TABLE "auth_tokens" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"user_id" uuid NOT NULL,
@@ -72,6 +73,17 @@ CREATE TABLE "product_categories" (
 	CONSTRAINT "product_categories_slug_unique" UNIQUE("slug")
 );
 --> statement-breakpoint
+CREATE TABLE "product_reviews" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"product_id" uuid NOT NULL,
+	"user_id" uuid NOT NULL,
+	"rating" integer NOT NULL,
+	"comment" text,
+	"is_visible" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "products" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"name" text NOT NULL,
@@ -83,6 +95,8 @@ CREATE TABLE "products" (
 	"discount_percentage" double precision DEFAULT 0 NOT NULL,
 	"stock" integer DEFAULT 0 NOT NULL,
 	"status" "content_status" DEFAULT 'ACTIVE' NOT NULL,
+	"average_rating" double precision DEFAULT 0 NOT NULL,
+	"total_reviews" integer DEFAULT 0 NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "products_sku_unique" UNIQUE("sku")
@@ -108,7 +122,8 @@ CREATE TABLE "order_items" (
 	"order_id" uuid NOT NULL,
 	"product_id" uuid NOT NULL,
 	"quantity" integer NOT NULL,
-	"price" double precision NOT NULL
+	"price" double precision NOT NULL,
+	"original_price" double precision NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "orders" (
@@ -119,11 +134,15 @@ CREATE TABLE "orders" (
 	"total_amount" double precision NOT NULL,
 	"tax_country" text NOT NULL,
 	"tax_percentage" double precision NOT NULL,
+	"currency" text DEFAULT 'USD' NOT NULL,
+	"conversion_rate" double precision DEFAULT 1 NOT NULL,
+	"conversion_charge" double precision DEFAULT 0 NOT NULL,
+	"invoice_url" text,
 	"status" "order_status" DEFAULT 'PENDING' NOT NULL,
 	"payment_method" text NOT NULL,
 	"payment_status" "payment_status" DEFAULT 'PENDING' NOT NULL,
-	"razorpay_order_id" text,
-	"razorpay_payment_id" text,
+	"paypal_order_id" text,
+	"paypal_payment_id" text,
 	"shipping_street" text NOT NULL,
 	"shipping_city" text NOT NULL,
 	"shipping_state" text NOT NULL,
@@ -135,6 +154,23 @@ CREATE TABLE "orders" (
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "blog_comments" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"blog_id" uuid NOT NULL,
+	"user_id" uuid NOT NULL,
+	"content" text NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "blog_interactions" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"blog_id" uuid NOT NULL,
+	"user_id" uuid NOT NULL,
+	"type" "interaction_type" NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "blogs" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"title" text NOT NULL,
@@ -143,6 +179,9 @@ CREATE TABLE "blogs" (
 	"thumbnail_url" text NOT NULL,
 	"author_id" uuid NOT NULL,
 	"status" "publication_status" DEFAULT 'DRAFT' NOT NULL,
+	"views_count" integer DEFAULT 0 NOT NULL,
+	"likes_count" integer DEFAULT 0 NOT NULL,
+	"dislikes_count" integer DEFAULT 0 NOT NULL,
 	"published_at" timestamp,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL,
@@ -225,6 +264,8 @@ ALTER TABLE "chat_messages" ADD CONSTRAINT "chat_messages_receiver_id_users_id_f
 ALTER TABLE "support_tickets" ADD CONSTRAINT "support_tickets_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ticket_messages" ADD CONSTRAINT "ticket_messages_ticket_id_support_tickets_id_fk" FOREIGN KEY ("ticket_id") REFERENCES "public"."support_tickets"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "ticket_messages" ADD CONSTRAINT "ticket_messages_sender_id_users_id_fk" FOREIGN KEY ("sender_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "product_reviews" ADD CONSTRAINT "product_reviews_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "product_reviews" ADD CONSTRAINT "product_reviews_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "products" ADD CONSTRAINT "products_category_id_product_categories_id_fk" FOREIGN KEY ("category_id") REFERENCES "public"."product_categories"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cart_items" ADD CONSTRAINT "cart_items_cart_id_carts_id_fk" FOREIGN KEY ("cart_id") REFERENCES "public"."carts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "cart_items" ADD CONSTRAINT "cart_items_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -232,6 +273,10 @@ ALTER TABLE "carts" ADD CONSTRAINT "carts_user_id_users_id_fk" FOREIGN KEY ("use
 ALTER TABLE "order_items" ADD CONSTRAINT "order_items_order_id_orders_id_fk" FOREIGN KEY ("order_id") REFERENCES "public"."orders"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "order_items" ADD CONSTRAINT "order_items_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "orders" ADD CONSTRAINT "orders_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "blog_comments" ADD CONSTRAINT "blog_comments_blog_id_blogs_id_fk" FOREIGN KEY ("blog_id") REFERENCES "public"."blogs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "blog_comments" ADD CONSTRAINT "blog_comments_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "blog_interactions" ADD CONSTRAINT "blog_interactions_blog_id_blogs_id_fk" FOREIGN KEY ("blog_id") REFERENCES "public"."blogs"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "blog_interactions" ADD CONSTRAINT "blog_interactions_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "blogs" ADD CONSTRAINT "blogs_author_id_users_id_fk" FOREIGN KEY ("author_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "documentation_assets" ADD CONSTRAINT "documentation_assets_node_id_documentation_nodes_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."documentation_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "documentation_nodes" ADD CONSTRAINT "documentation_nodes_parent_id_documentation_nodes_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."documentation_nodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

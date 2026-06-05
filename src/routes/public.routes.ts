@@ -31,10 +31,10 @@ router.get('/privacy/active', privacyController.getActivePolicy);
 
 router.get('/shop', shopController.browseProducts);
 router.get('/shop/categories', shopController.getCategories);
-router.get('/shop/:id', shopController.getProductDetails);
-router.get('/shop/:id/suggested', shopController.getSuggestedProducts);
-router.get('/shop/:id/reviews', shopController.getProductReviews);
-router.post('/shop/:id/reviews', protect, shopController.addProductReview);
+router.get('/shop/:sku', shopController.getProductDetails);
+router.get('/shop/:sku/suggested', shopController.getSuggestedProducts);
+router.get('/shop/:sku/reviews', shopController.getProductReviews);
+router.post('/shop/:sku/reviews', protect, shopController.addProductReview);
 
 router.get('/terms/active', termsController.getActiveTerm);
 

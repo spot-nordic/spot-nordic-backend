@@ -58,9 +58,12 @@ router.delete('/privacy/:id', privacyController.deletePolicy);
 
 router.post('/products/category', productController.createCategory);
 router.get('/products/category', productController.getCategories);
+router.get('/products/category/check-slug', productController.checkCategorySlugAvailability);
 router.put('/products/category/:id', productController.updateCategory);
 router.delete('/products/category/:id', productController.deleteCategory);
+
 router.get('/products', productController.getPaginatedProducts);
+router.get('/products/check-sku', productController.checkSkuAvailability);
 router.post('/products', upload.array('images', 5), productController.createProduct);
 router.put('/products/:id', upload.array('images', 5), productController.updateProduct);
 router.delete('/products/:id', productController.deleteProduct);

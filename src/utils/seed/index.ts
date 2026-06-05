@@ -29,9 +29,9 @@ const runSeed = async () => {
     await seedFaqs();
     await seedPrivacy();
     await seedTerms();
-    await seedBlogs();
+    // await seedBlogs();
     await seedContacts();
-    await seedDocs();
+    // await seedDocs();
     await seedTickets();
     
     console.log('🎉 Seeding complete!');
