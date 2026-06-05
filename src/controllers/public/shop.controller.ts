@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { db } from '../../configs/db.config';
 import { products, productCategories, productReviews, users } from '../../db/schema';
-import { eq, and, desc, sql, ilike, or, gte, lte } from 'drizzle-orm';
+import { eq, and, desc, sql, ilike, or, gte, lte, type SQL } from 'drizzle-orm';
 import { AuthRequest } from '../../middlewares/auth.middleware';
 
 export const getCategories = async (req: Request, res: Response): Promise<void> => {
@@ -33,7 +33,7 @@ export const browseProducts = async (req: Request, res: Response): Promise<void>
         const minPrice: number = parseFloat(req.query.minPrice as string);
         const maxPrice: number = parseFloat(req.query.maxPrice as string);
 
-        const conditions = [eq(products.status, 'ACTIVE')];
+        const conditions: Array<SQL<unknown>> = [eq(products.status, 'ACTIVE')];
 
         if (categorySlug) {
             conditions.push(eq(productCategories.slug, String(categorySlug)));
@@ -47,14 +47,16 @@ export const browseProducts = async (req: Request, res: Response): Promise<void>
         }
 
         if (search) {
-            conditions.push(
-                or(
-                    ilike(products.name, `%${search}%`),
-                    ilike(products.sku, `%${search}%`),
-                    ilike(products.description, `%${search}%`),
-                    ilike(productCategories.name, `%${search}%`)
-                ) as ReturnType<typeof or>
+            const searchCondition: SQL<unknown> | undefined = or(
+                ilike(products.name, `%${search}%`),
+                ilike(products.sku, `%${search}%`),
+                ilike(products.description, `%${search}%`),
+                ilike(productCategories.name, `%${search}%`)
             );
+
+            if (searchCondition !== undefined) {
+                conditions.push(searchCondition);
+            }
         }
 
         const whereClause = and(...conditions);
