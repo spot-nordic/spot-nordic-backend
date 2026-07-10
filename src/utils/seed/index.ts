@@ -24,15 +24,15 @@ const runSeed = async () => {
       await destroyAll();
     }
     
-    await seedUsers();
+    // await seedUsers();
     await seedProductsAndOrders();
-    await seedFaqs();
-    await seedPrivacy();
-    await seedTerms();
+    // await seedFaqs();
+    // await seedPrivacy();
+    // await seedTerms();
     // await seedBlogs();
-    await seedContacts();
+    // await seedContacts();
     // await seedDocs();
-    await seedTickets();
+    // await seedTickets();
     
     console.log('🎉 Seeding complete!');
   } catch (error) {

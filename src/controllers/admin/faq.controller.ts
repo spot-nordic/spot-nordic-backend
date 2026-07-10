@@ -3,6 +3,7 @@ import { db } from '../../configs/db.config';
 import { faqs } from '../../db/schema';
 import { eq, desc, sql, ilike } from 'drizzle-orm';
 import { AuthRequest } from '../../middlewares/auth.middleware';
+import { uploadFileToS3 } from '../../services/upload.service';
 
 export const getPaginatedFaqsAdmin = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
@@ -85,6 +86,22 @@ export const deleteFaq = async (req: AuthRequest, res: Response): Promise<void> 
             return;
         }
         res.status(200).json({ message: 'FAQ deleted successfully' });
+    } catch (error: unknown) {
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
+export const uploadFaqImage = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const file = req.file as Express.Multer.File;
+        if (!file) {
+            res.status(400).json({ message: 'No image provided' });
+            return;
+        }
+
+        const fileUrl: string = await uploadFileToS3(file.buffer, file.originalname, file.mimetype, 'faqs/inline');
+        
+        res.status(201).json({ url: fileUrl });
     } catch (error: unknown) {
         res.status(500).json({ message: 'Server error' });
     }

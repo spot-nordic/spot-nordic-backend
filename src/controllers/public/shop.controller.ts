@@ -1,22 +1,40 @@
 import { Request, Response } from 'express';
 import { db } from '../../configs/db.config';
 import { products, productCategories, productReviews, users } from '../../db/schema';
-import { eq, and, desc, sql, ilike, or, gte, lte, type SQL } from 'drizzle-orm';
+import { eq, and, desc, sql, ilike, or, gte, lte, type SQL, asc, inArray } from 'drizzle-orm';
 import { AuthRequest } from '../../middlewares/auth.middleware';
 
 export const getCategories = async (req: Request, res: Response): Promise<void> => {
     try {
-        const results = await db.select({
+        const allCategories = await db.select({
             id: productCategories.id,
             name: productCategories.name,
             slug: productCategories.slug,
-            description: productCategories.description
+            description: productCategories.description,
+            parentId: productCategories.parentId,
+            sortOrder: productCategories.sortOrder
         })
         .from(productCategories)
         .where(eq(productCategories.status, 'ACTIVE'))
-        .orderBy(desc(productCategories.createdAt));
+        .orderBy(asc(productCategories.sortOrder));
 
-        res.status(200).json(results);
+        const categoryMap = new Map();
+        const rootCategories: Record<string, unknown>[] = [];
+
+        allCategories.forEach(cat => {
+            categoryMap.set(cat.id, { ...cat, subCategories: [] });
+        });
+
+        allCategories.forEach(cat => {
+            if (cat.parentId) {
+                const parent = categoryMap.get(cat.parentId);
+                if (parent) parent.subCategories.push(categoryMap.get(cat.id));
+            } else {
+                rootCategories.push(categoryMap.get(cat.id));
+            }
+        });
+
+        res.status(200).json(rootCategories);
     } catch (error) {
         res.status(500).json({ message: 'Server error' });
     }
@@ -29,14 +47,17 @@ export const browseProducts = async (req: Request, res: Response): Promise<void>
         const offset: number = (page - 1) * limit;
 
         const search: string = req.query.search as string;
-        const categorySlug: string = req.query.categorySlug as string;
+        const categoriesQuery: string = req.query.categories as string;
         const minPrice: number = parseFloat(req.query.minPrice as string);
         const maxPrice: number = parseFloat(req.query.maxPrice as string);
 
         const conditions: Array<SQL<unknown>> = [eq(products.status, 'ACTIVE')];
 
-        if (categorySlug) {
-            conditions.push(eq(productCategories.slug, String(categorySlug)));
+        if (categoriesQuery) {
+            const slugs = categoriesQuery.split(',').filter(Boolean);
+            if (slugs.length > 0) {
+                conditions.push(inArray(productCategories.slug, slugs));
+            }
         }
         
         if (!isNaN(minPrice)) {

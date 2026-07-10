@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { db } from '../../configs/db.config';
 import { blogs, blogComments, users } from '../../db/schema';
-import { eq, desc, sql, ilike, or, and } from 'drizzle-orm';
+import { eq, desc, sql, ilike, or, and, ne } from 'drizzle-orm';
 import { AuthRequest } from '../../middlewares/auth.middleware';
 import { uploadFileToS3 } from '../../services/upload.service';
 
@@ -54,8 +54,9 @@ export const getPaginatedBlogs = async (req: AuthRequest, res: Response): Promis
                 limit
             }
         });
-    } catch (error: unknown) {
-        res.status(500).json({ message: 'Server error' });
+    } catch (error: any) {
+        console.error('Fetch Blogs Error:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
 
@@ -64,6 +65,17 @@ export const createBlog = async (req: AuthRequest, res: Response): Promise<void>
         const { title, slug, htmlContent, status } = req.body;
         const authorId: string = req.user!.id;
         const file = req.file as Express.Multer.File;
+
+        if (!title || !slug || !htmlContent) {
+            res.status(400).json({ message: 'Title, slug, and content are required fields.' });
+            return;
+        }
+
+        const slugCheck = await db.select().from(blogs).where(eq(blogs.slug, slug)).limit(1);
+        if (slugCheck.length > 0) {
+            res.status(400).json({ message: 'A blog with this URL slug already exists. Please manually change the slug.' });
+            return;
+        }
 
         let thumbnailUrl: string = '';
         if (file) {
@@ -83,8 +95,9 @@ export const createBlog = async (req: AuthRequest, res: Response): Promise<void>
         }).returning();
 
         res.status(201).json(newBlog[0]);
-    } catch (error: unknown) {
-        res.status(500).json({ message: 'Server error' });
+    } catch (error: any) {
+        console.error('Create Blog Server Error:', error);
+        res.status(500).json({ message: 'Server error during blog creation', error: error.message });
     }
 };
 
@@ -94,10 +107,23 @@ export const updateBlog = async (req: AuthRequest, res: Response): Promise<void>
         const { title, slug, htmlContent, status } = req.body;
         const file = req.file as Express.Multer.File;
 
+        if (!title || !slug || !htmlContent) {
+            res.status(400).json({ message: 'Title, slug, and content are required fields.' });
+            return;
+        }
+
         const currentBlog = await db.select().from(blogs).where(eq(blogs.id, id));
         if (currentBlog.length === 0) {
             res.status(404).json({ message: 'Blog not found' });
             return;
+        }
+
+        if (slug) {
+            const slugCheck = await db.select().from(blogs).where(and(eq(blogs.slug, slug), ne(blogs.id, id))).limit(1);
+            if (slugCheck.length > 0) {
+                res.status(400).json({ message: 'A blog with this URL slug already exists.' });
+                return;
+            }
         }
 
         let thumbnailUrl: string = currentBlog[0].thumbnailUrl;
@@ -113,8 +139,9 @@ export const updateBlog = async (req: AuthRequest, res: Response): Promise<void>
             .returning();
 
         res.status(200).json(updatedBlog[0]);
-    } catch (error: unknown) {
-        res.status(500).json({ message: 'Server error' });
+    } catch (error: any) {
+        console.error('Update Blog Server Error:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
 
@@ -123,8 +150,9 @@ export const deleteBlog = async (req: AuthRequest, res: Response): Promise<void>
         const id: string = req.params.id as string;
         await db.delete(blogs).where(eq(blogs.id, id));
         res.status(200).json({ message: 'Blog deleted successfully' });
-    } catch (error: unknown) {
-        res.status(500).json({ message: 'Server error' });
+    } catch (error: any) {
+        console.error('Delete Blog Server Error:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
 
@@ -149,8 +177,9 @@ export const getBlogCommentsAdmin = async (req: AuthRequest, res: Response): Pro
         .orderBy(desc(blogComments.createdAt));
 
         res.status(200).json(comments);
-    } catch (error: unknown) {
-        res.status(500).json({ message: 'Server error' });
+    } catch (error: any) {
+        console.error('Fetch Blog Comments Error:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
 
@@ -159,7 +188,52 @@ export const deleteBlogCommentAdmin = async (req: AuthRequest, res: Response): P
         const commentId: string = req.params.commentId as string;
         await db.delete(blogComments).where(eq(blogComments.id, commentId));
         res.status(200).json({ message: 'Comment deleted successfully' });
-    } catch (error: unknown) {
-        res.status(500).json({ message: 'Server error' });
+    } catch (error: any) {
+        console.error('Delete Blog Comment Error:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+export const uploadBlogImage = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const file = req.file as Express.Multer.File;
+        if (!file) {
+            res.status(400).json({ message: 'No image provided' });
+            return;
+        }
+
+        const fileUrl: string = await uploadFileToS3(file.buffer, file.originalname, file.mimetype, 'blogs/inline');
+        
+        res.status(201).json({ url: fileUrl });
+    } catch (error: any) {
+        console.error('Inline Image Upload Error:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
+    }
+};
+
+export const checkBlogSlugAvailability = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const slug: string = req.query.slug as string;
+        const excludeId: string = req.query.excludeId as string;
+
+        if (!slug) {
+            res.status(400).json({ message: 'Slug is required' });
+            return;
+        }
+
+        const conditions = [eq(blogs.slug, slug)];
+        if (excludeId) {
+            conditions.push(ne(blogs.id, excludeId));
+        }
+
+        const existingBlog = await db.select({ id: blogs.id })
+            .from(blogs)
+            .where(and(...conditions))
+            .limit(1);
+
+        res.status(200).json({ isAvailable: existingBlog.length === 0 });
+    } catch (error: any) {
+        console.error('Slug Availability Check Error:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
     }
 };

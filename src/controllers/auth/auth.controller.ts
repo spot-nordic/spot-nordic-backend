@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { db } from '../../configs/db.config';
-import { users } from '../../db/schema';
+import { users, subscribers } from '../../db/schema';
 import { eq } from 'drizzle-orm';
 import { generateOTP } from '../../utils/otp';
 import { generateAccessToken, generateRefreshToken } from '../../utils/jwt';
@@ -13,8 +13,13 @@ import { logger } from '../../utils/logger';
 
 export const register = async (req: Request, res: Response): Promise<void> => {
     try {
-        const { email, password, firstName, lastName, captchaToken } = req.body;
+        const { email, password, firstName, lastName, captchaToken, termsAccepted, subscribeNewsletter } = req.body;
         const normalizedEmail = String(email).toLowerCase().trim();
+
+        if (!termsAccepted) {
+            res.status(400).json({ message: 'You must accept the terms and privacy policy to register.' });
+            return;
+        }
 
         if (!captchaToken) {
             res.status(400).json({ message: 'Captcha verification is required' });
@@ -38,7 +43,6 @@ export const register = async (req: Request, res: Response): Promise<void> => {
         // const otp = generateOTP();
         const otp = 123456;
         
-        // Normalize email for Redis Key
         const redisKey = `OTP:REGISTER:${normalizedEmail}`;
         const pendingUserData = { 
             email: normalizedEmail, 
@@ -46,16 +50,17 @@ export const register = async (req: Request, res: Response): Promise<void> => {
             firstName, 
             lastName, 
             role: 'USER', 
-            otp 
+            otp,
+            subscribeNewsletter: !!subscribeNewsletter 
         };
         
         await redisClient.setEx(redisKey, 600, JSON.stringify(pendingUserData));
 
-        // await emailConfig.sendEmail(
-        //     normalizedEmail,
-        //     'Verify Your Account',
-        //     `<h1>Your Registration OTP is ${otp}</h1><p>It expires in 10 minutes.</p>`
-        // );
+        await emailConfig.sendEmail(
+            normalizedEmail,
+            'Verify Your Account',
+            `<h1>Your Registration OTP is ${otp}</h1><p>It expires in 10 minutes.</p>`
+        );
 
         res.status(201).json({ message: 'Registration successful, verify OTP to continue' });
     } catch (error) {
@@ -96,7 +101,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         res.status(200).json({
             token: accessToken,
             refreshToken,
-            user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName }
+            user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName, permissions: user.permissions }
         });
     } catch (error) {
         logger.error(error);
@@ -122,11 +127,11 @@ export const forgotPassword = async (req: Request, res: Response): Promise<void>
         
         await redisClient.setEx(redisKey, 600, JSON.stringify(pendingData));
 
-        // await emailConfig.sendEmail(
-        //     normalizedEmail,
-        //     'Password Reset Verification',
-        //     `<h1>Your Password Reset OTP is ${otp}</h1><p>It expires in 10 minutes.</p>`
-        // );
+        await emailConfig.sendEmail(
+            normalizedEmail,
+            'Password Reset Verification',
+            `<h1>Your Password Reset OTP is ${otp}</h1><p>It expires in 10 minutes.</p>`
+        );
 
         res.status(200).json({ message: 'OTP sent to email successfully' });
     } catch (error) {
@@ -149,7 +154,6 @@ export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
 
         const storedData = JSON.parse(storedDataStr);
 
-        // Strict type casting to ensure Number/String mismatches don't trigger false positives
         if (String(storedData.otp).trim() !== String(otp).trim()) {
             res.status(400).json({ message: 'Invalid OTP' });
             return;
@@ -166,6 +170,20 @@ export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
             }).returning();
 
             const user = newUser[0];
+
+            if (storedData.subscribeNewsletter) {
+                const existingSub = await db.select().from(subscribers).where(eq(subscribers.email, user.email));
+                if (existingSub.length === 0) {
+                    await db.insert(subscribers).values({
+                        email: user.email,
+                        preferences: { products: true, blogs: true, sms: false },
+                        isActive: true
+                    });
+                } else {
+                    await db.update(subscribers).set({ isActive: true }).where(eq(subscribers.id, existingSub[0].id));
+                }
+            }
+
             const accessToken = generateAccessToken(user.id, user.role);
             const refreshToken = generateRefreshToken(user.id);
 
@@ -176,7 +194,7 @@ export const verifyOTP = async (req: Request, res: Response): Promise<void> => {
                 message: 'Account verified and created successfully.',
                 token: accessToken,
                 refreshToken,
-                user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName }
+                user: { id: user.id, email: user.email, role: user.role, firstName: user.firstName, lastName: user.lastName, permissions: user.permissions }
             });
             return;
         }

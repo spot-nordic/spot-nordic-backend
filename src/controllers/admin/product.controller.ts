@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { db } from '../../configs/db.config';
 import { products, productCategories, productReviews, users } from '../../db/schema';
-import { eq, ne, and, or, ilike, sql, desc } from 'drizzle-orm';
+import { eq, ne, and, or, ilike, sql, desc, asc } from 'drizzle-orm';
 import { uploadFileToS3 } from '../../services/upload.service';
 import { AuthRequest } from '../../middlewares/auth.middleware';
 
@@ -33,7 +33,7 @@ export const checkCategorySlugAvailability = async (req: AuthRequest, res: Respo
 
 export const createCategory = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const { name, slug, description } = req.body;
+        const { name, slug, description, parentId, sortOrder } = req.body;
 
         const slugCheck = await db.select().from(productCategories).where(eq(productCategories.slug, slug)).limit(1);
         if (slugCheck.length > 0) {
@@ -41,7 +41,22 @@ export const createCategory = async (req: AuthRequest, res: Response): Promise<v
             return;
         }
 
-        const newCategory = await db.insert(productCategories).values({ name, slug, description }).returning();
+        if (parentId) {
+            const parentCheck = await db.select().from(productCategories).where(eq(productCategories.id, parentId)).limit(1);
+            if (parentCheck.length === 0) {
+                res.status(400).json({ message: 'Parent category does not exist.' });
+                return;
+            }
+        }
+
+        const newCategory = await db.insert(productCategories).values({ 
+            name, 
+            slug, 
+            description, 
+            parentId: parentId || null, 
+            sortOrder: sortOrder || 0 
+        }).returning();
+        
         res.status(201).json(newCategory[0]);
     } catch (error: unknown) {
         res.status(500).json({ message: 'Server error' });
@@ -50,7 +65,7 @@ export const createCategory = async (req: AuthRequest, res: Response): Promise<v
 
 export const getCategories = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const results = await db.select().from(productCategories).orderBy(desc(productCategories.createdAt));
+        const results = await db.select().from(productCategories).orderBy(asc(productCategories.sortOrder), desc(productCategories.createdAt));
         res.status(200).json(results);
     } catch (error: unknown) {
         res.status(500).json({ message: 'Server error' });
@@ -60,7 +75,7 @@ export const getCategories = async (req: AuthRequest, res: Response): Promise<vo
 export const updateCategory = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const id: string = req.params.id as string;
-        const { name, slug, description, status } = req.body;
+        const { name, slug, description, status, parentId, sortOrder } = req.body;
 
         if (slug) {
             const slugCheck = await db.select().from(productCategories).where(and(eq(productCategories.slug, slug), ne(productCategories.id, id))).limit(1);
@@ -71,9 +86,18 @@ export const updateCategory = async (req: AuthRequest, res: Response): Promise<v
         }
 
         const updatedCategory = await db.update(productCategories)
-            .set({ name, slug, description, status, updatedAt: new Date() })
+            .set({ 
+                name, 
+                slug, 
+                description, 
+                status, 
+                parentId: parentId || null, 
+                sortOrder, 
+                updatedAt: new Date() 
+            })
             .where(eq(productCategories.id, id))
             .returning();
+            
         res.status(200).json(updatedCategory[0]);
     } catch (error: unknown) {
         res.status(500).json({ message: 'Server error' });

@@ -15,15 +15,18 @@ import * as termsController from '../controllers/admin/terms.controller';
 import * as ticketController from '../controllers/admin/ticket.controller';
 import * as userController from '../controllers/admin/user.controller';
 import * as chatController from '../controllers/shared/chat.controller';
+import * as newsletterController from '../controllers/admin/newsletter.controller';
 
 const router = Router();
 
-router.use(protect, authorize('ADMIN'));
+router.use(protect, authorize('ADMIN', 'SUBADMIN'));
 
 router.get('/dashboard/stats', dashboardController.getAdminDashboardStats);
 
 router.get('/blogs', blogController.getPaginatedBlogs);
+router.get('/blogs/check-slug', blogController.checkBlogSlugAvailability);
 router.post('/blogs', upload.single('thumbnail'), blogController.createBlog);
+router.post('/blogs/upload-image', upload.single('image'), blogController.uploadBlogImage);
 router.put('/blogs/:id', upload.single('thumbnail'), blogController.updateBlog);
 router.delete('/blogs/:id', blogController.deleteBlog);
 router.get('/blogs/:id/comments', blogController.getBlogCommentsAdmin);
@@ -43,8 +46,14 @@ router.post('/docs/assets', upload.single('file'), docController.uploadDocAsset)
 
 router.get('/faqs', faqController.getPaginatedFaqsAdmin);
 router.post('/faqs', faqController.createFaq);
+router.post('/faqs/upload-image', upload.single('image'), faqController.uploadFaqImage);
 router.put('/faqs/:id', faqController.updateFaq);
 router.delete('/faqs/:id', faqController.deleteFaq);
+
+router.get('/newsletter/subscribers', newsletterController.getSubscribers);
+router.post('/newsletter/subscribers', newsletterController.addSubscriber);
+router.post('/newsletter/broadcast', newsletterController.broadcastNewsletter);
+router.post('/newsletter/upload-image', upload.single('image'), newsletterController.uploadNewsletterImage);
 
 router.get('/orders', orderController.getAllOrders);
 router.put('/orders/:id/status', orderController.updateOrderStatus);
@@ -78,8 +87,10 @@ router.patch('/terms/:id/activate', termsController.activateTerm);
 router.delete('/terms/:id', termsController.deleteTerm);
 
 router.get('/tickets', ticketController.getAllTickets);
+router.post('/tickets/user', ticketController.createTicketForUser); 
 router.get('/tickets/:ticketId', ticketController.getTicketDetailsAdmin);
 router.put('/tickets/:ticketId/status', ticketController.updateTicketStatus);
+router.delete('/tickets/:ticketId', ticketController.deleteTicket);
 
 router.get('/chat/conversations', chatController.getMyConversations);
 router.get('/chat/history/:targetUserId', chatController.getChatHistory);
@@ -88,5 +99,8 @@ router.post('/chat/send', upload.single('file'), chatController.sendMessageWithA
 router.get('/users', userController.getPaginatedUsers);
 router.put('/users/:id/status', userController.updateUserStatus);
 router.delete('/users/:id', userController.hardDeleteUser);
+
+router.post('/users/subadmin', authorize('ADMIN'), userController.createSubAdmin);
+router.put('/users/subadmin/:id/permissions', authorize('ADMIN'), userController.updateSubAdminPermissions);
 
 export default router;

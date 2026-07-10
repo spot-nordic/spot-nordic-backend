@@ -1,28 +1,30 @@
 import { Response } from 'express';
+import bcrypt from 'bcryptjs';
 import { db } from '../../configs/db.config';
 import { users, orders } from '../../db/schema';
-import { eq, and, sql, desc, ilike } from 'drizzle-orm';
+import { eq, and, sql, desc, ilike, SQL } from 'drizzle-orm';
 import { AuthRequest } from '../../middlewares/auth.middleware';
 
 export const getPaginatedUsers = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-        const page: number = parseInt(req.query.page as string) || 1;
-        const limit: number = parseInt(req.query.limit as string) || 10;
+        const page: number = parseInt(req.query.page as string, 10) || 1;
+        const limit: number = parseInt(req.query.limit as string, 10) || 10;
         const offset: number = (page - 1) * limit;
         const search: string = req.query.search as string;
         const status: string = req.query.status as string;
+        const role: 'ADMIN' | 'SUBADMIN' | 'USER' = (req.query.role as 'ADMIN' | 'SUBADMIN' | 'USER') || 'USER'; 
 
-        let conditions = [eq(users.role, 'USER')];
+        const conditions: SQL[] = [eq(users.role, role)];
 
         if (status) {
-            conditions.push(eq(users.status, status as any));
+            conditions.push(eq(users.status, status as 'ACTIVE' | 'BLOCKED'));
         }
 
         if (search) {
             conditions.push(ilike(users.email, `%${search}%`));
         }
 
-        const whereClause = and(...conditions);
+        const whereClause: SQL = and(...conditions) as SQL;
 
         const results = await db.select({
             id: users.id,
@@ -30,6 +32,7 @@ export const getPaginatedUsers = async (req: AuthRequest, res: Response): Promis
             firstName: users.firstName,
             lastName: users.lastName,
             status: users.status,
+            permissions: users.permissions,
             createdAt: users.createdAt
         })
             .from(users)
@@ -59,7 +62,7 @@ export const getPaginatedUsers = async (req: AuthRequest, res: Response): Promis
 export const updateUserStatus = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const id: string = req.params.id as string;
-        const { status } = req.body;
+        const { status } = req.body as { status: 'ACTIVE' | 'BLOCKED' };
 
         const validStatuses: string[] = ['ACTIVE', 'BLOCKED'];
         if (!validStatuses.includes(status)) {
@@ -69,11 +72,11 @@ export const updateUserStatus = async (req: AuthRequest, res: Response): Promise
 
         const updated = await db.update(users)
             .set({ status, updatedAt: new Date() })
-            .where(and(eq(users.id, id), eq(users.role, 'USER')))
+            .where(eq(users.id, id))
             .returning();
 
         if (updated.length === 0) {
-            res.status(404).json({ message: 'Customer not found' });
+            res.status(404).json({ message: 'User not found' });
             return;
         }
 
@@ -97,15 +100,78 @@ export const hardDeleteUser = async (req: AuthRequest, res: Response): Promise<v
         }
 
         const deleted = await db.delete(users)
-            .where(and(eq(users.id, id), eq(users.role, 'USER')))
+            .where(eq(users.id, id))
             .returning();
 
         if (deleted.length === 0) {
-            res.status(404).json({ message: 'Customer not found' });
+            res.status(404).json({ message: 'User not found' });
             return;
         }
 
-        res.status(200).json({ message: 'Customer permanently deleted' });
+        res.status(200).json({ message: 'User permanently deleted' });
+    } catch (error: unknown) {
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
+export const createSubAdmin = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const { email, password, firstName, lastName, permissions } = req.body as {
+            email: string;
+            password: string;
+            firstName: string;
+            lastName: string;
+            permissions: string[];
+        };
+
+        const existingUser = await db.select().from(users).where(eq(users.email, email));
+        if (existingUser.length > 0) {
+            res.status(400).json({ message: 'User already exists' });
+            return;
+        }
+
+        const salt: string = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        const newSubAdmin = await db.insert(users).values({
+            email, 
+            password: hashedPassword, 
+            firstName, 
+            lastName,
+            role: 'SUBADMIN', 
+            permissions: permissions || [], 
+            isEmailVerified: true
+        }).returning();
+
+        res.status(201).json({ 
+            message: 'Sub-admin created', 
+            user: { 
+                id: newSubAdmin[0].id, 
+                email, 
+                permissions 
+            } 
+        });
+    } catch (error: unknown) {
+        res.status(500).json({ message: 'Server error' });
+    }
+};
+
+export const updateSubAdminPermissions = async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const id: string = req.params.id as string;
+        const { permissions } = req.body as { permissions: string[] };
+
+        const updated = await db.update(users)
+            .set({ permissions, updatedAt: new Date() })
+            .where(and(eq(users.id, id), eq(users.role, 'SUBADMIN')))
+            .returning();
+
+        if (updated.length === 0) {
+            res.status(404).json({ message: 'Subadmin not found' });
+            return;
+        }
+
+        res.status(200).json({ message: 'Permissions updated', permissions: updated[0].permissions });
     } catch (error: unknown) {
         res.status(500).json({ message: 'Server error' });
     }

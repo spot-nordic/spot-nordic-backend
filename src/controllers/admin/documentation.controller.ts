@@ -55,6 +55,7 @@ export const getDocAssets = async (req: AuthRequest, res: Response): Promise<voi
         res.status(500).json({ message: 'Server error' });
     }
 };
+
 export const createDocNode = async (req: AuthRequest, res: Response): Promise<void> => {
     try {
         const { title, slug, parentId, isGroup, htmlContent, metaTitle, metaDescription, sortOrder, status } = req.body;

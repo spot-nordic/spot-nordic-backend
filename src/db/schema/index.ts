@@ -17,3 +17,7 @@ export * from './terms/terms.schema';
 export * from './terms/terms.relations';
 export * from './contact/contact.schema';
 export * from './contact/contact.relations';
+export * from './newsletter/newsletter.schema';
+export * from './newsletter/newsletter.relations';
+export * from './support/support.schema';
+export * from './support/support.relations';

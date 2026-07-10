@@ -6,6 +6,7 @@ import * as faqController from '../controllers/public/faq.controller';
 import * as privacyController from '../controllers/public/privacy.controller';
 import * as shopController from '../controllers/public/shop.controller';
 import * as termsController from '../controllers/public/terms.controller';
+import * as newsletterController from '../controllers/public/newsletter.controller';
 import { protect } from '../middlewares/auth.middleware';
 
 const router = Router();
@@ -37,5 +38,8 @@ router.get('/shop/:sku/reviews', shopController.getProductReviews);
 router.post('/shop/:sku/reviews', protect, shopController.addProductReview);
 
 router.get('/terms/active', termsController.getActiveTerm);
+
+router.post('/newsletter/subscribe', newsletterController.subscribeToNewsletter);
+router.post('/newsletter/unsubscribe', newsletterController.unsubscribeFromNewsletter);
 
 export default router;

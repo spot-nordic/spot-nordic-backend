@@ -25,12 +25,12 @@ export const orders = pgTable('orders', {
   totalAmount: doublePrecision('total_amount').notNull(),
   taxCountry: text('tax_country').notNull(),
   taxPercentage: doublePrecision('tax_percentage').notNull(),
-  currency: text('currency').default('USD').notNull(),
+  currency: text('currency').default('EUR').notNull(), // Default updated to Euro
   conversionRate: doublePrecision('conversion_rate').default(1.0).notNull(),
   conversionCharge: doublePrecision('conversion_charge').default(0).notNull(),
   invoiceUrl: text('invoice_url'),
   status: orderStatusEnum('status').default('PENDING').notNull(),
-  paymentMethod: text('payment_method').notNull(),
+  paymentMethod: text('payment_method').notNull(), // e.g., 'PAYPAL' or 'WIRE_TRANSFER'
   paymentStatus: paymentStatusEnum('payment_status').default('PENDING').notNull(),
   paypalOrderId: text('paypal_order_id'),
   paypalPaymentId: text('paypal_payment_id'),

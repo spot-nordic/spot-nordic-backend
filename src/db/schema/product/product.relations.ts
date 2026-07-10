@@ -3,8 +3,16 @@ import { productCategories, products, productReviews } from './product.schema';
 import { cartItems, orderItems } from '../order/order.schema';
 import { users } from '../user/user.schema';
 
-export const productCategoriesRelations = relations(productCategories, ({ many }) => ({
+export const productCategoriesRelations = relations(productCategories, ({ one, many }) => ({
   products: many(products),
+  parent: one(productCategories, {
+    fields: [productCategories.parentId],
+    references: [productCategories.id],
+    relationName: 'category_tree',
+  }),
+  children: many(productCategories, {
+    relationName: 'category_tree',
+  }),
 }));
 
 export const productsRelations = relations(products, ({ one, many }) => ({

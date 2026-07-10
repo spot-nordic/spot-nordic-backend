@@ -1,22 +1,18 @@
+import nodemailer, { Transporter, SendMailOptions } from 'nodemailer';
 import './env.config';
-import nodemailer, { Transporter } from 'nodemailer';
 
 class EmailConfig {
   private transporter: Transporter;
 
   constructor() {
     this.transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT as string || '465', 10),
+      host: process.env.SMTP_HOST as string,
+      port: Number(process.env.SMTP_PORT),
       secure: process.env.SMTP_SECURE === 'true',
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: process.env.SMTP_USER as string,
+        pass: process.env.SMTP_PASS as string,
       },
-      tls: {
-        rejectUnauthorized: false,
-      },
-      localAddress: '0.0.0.0', 
     });
   }
 
@@ -59,25 +55,19 @@ class EmailConfig {
     `;
   }
 
-  async sendEmail(to: string, subject: string, htmlContent: string): Promise<void> {
-    const mailOptions = {
-      from: `${process.env.FROM_NAME} <${process.env.FROM_EMAIL}>`,
-      to,
-      subject,
-      html: this.wrapHtml(subject, htmlContent),
-    };
-
-    await this.transporter.sendMail(mailOptions);
-  }
-
-  async verifyConnection(): Promise<boolean> {
+  public async sendEmail(to: string, subject: string, htmlContent: string): Promise<void> {
     try {
-      await this.transporter.verify();
-      console.log('✅ Email service connected successfully');
-      return true;
-    } catch (error) {
-      console.error('Email service connection failed:', error);
-      return false;
+      const mailOptions: SendMailOptions = {
+        from: `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>`,
+        to,
+        subject,
+        html: this.wrapHtml(subject, htmlContent),
+      };
+
+      await this.transporter.sendMail(mailOptions);
+    } catch (error: unknown) {
+      console.error(error);
+      throw error;
     }
   }
 }

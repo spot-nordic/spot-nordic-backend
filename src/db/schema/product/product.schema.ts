@@ -7,6 +7,8 @@ export const productCategories = pgTable('product_categories', {
   name: text('name').notNull().unique(),
   slug: text('slug').notNull().unique(),
   description: text('description'),
+  parentId: uuid('parent_id').references((): any => productCategories.id, { onDelete: 'cascade' }),
+  sortOrder: integer('sort_order').default(0).notNull(),
   status: contentStatusEnum('status').default('ACTIVE').notNull(),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
