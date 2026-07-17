@@ -20,6 +20,7 @@
     "db:destroy": "NODE_ENV=development ts-node src/utils/dbDestroy.ts",
     "db:migrate:prod": "node dist/utils/migrate.js",
     "seed": "NODE_ENV=development ts-node src/utils/seed/index.ts",
+    "seedprod": "NODE_ENV=production ts-node src/utils/seed/index.ts",
     "seed:destroy": "NODE_ENV=development ts-node src/utils/seed/index.ts -d"
   },
   "keywords": [

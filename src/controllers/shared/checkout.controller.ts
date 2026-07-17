@@ -293,6 +293,12 @@ export const verifyPayment = async (req: AuthRequest, res: Response): Promise<vo
             return
         }
 
+        // --- FIX ADDED HERE ---
+        // Extracting properties to immutable constants so TypeScript retains narrowing inside async closures
+        const userId: string = req.user.id
+        const userEmail: string = req.user.email
+        // ----------------------
+
         const { orderId, paypalOrderId } = req.body
 
         const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -347,7 +353,8 @@ export const verifyPayment = async (req: AuthRequest, res: Response): Promise<vo
                 .where(eq(orders.id, orderId))
                 .returning()
 
-            const cart = await tx.select().from(carts).where(eq(carts.userId, req.user.id))
+            // --- FIX USED HERE: Replaced req.user.id with userId ---
+            const cart = await tx.select().from(carts).where(eq(carts.userId, userId))
             if (cart.length > 0) {
                 await tx.delete(cartItems).where(eq(cartItems.cartId, cart[0].id))
             }
@@ -355,8 +362,9 @@ export const verifyPayment = async (req: AuthRequest, res: Response): Promise<vo
             return orderUpdate
         })
 
+        // --- FIX USED HERE: Replaced req.user.email with userEmail ---
         await safeSendEmail(
-            req.user.email,
+            userEmail,
             `Order Confirmed - #${orderId}`,
             `<h1>Your order has been confirmed!</h1><p>We are processing your order. You can view your invoice <a href="${invoiceUrl}">here</a>.</p>`
         )
